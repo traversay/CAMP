@@ -1,0 +1,113 @@
+#!/bin/sh
+
+DbUser='root'
+DbPass='root'
+CygSrv="Cygwin Service"
+SrvCnf=/etc/cygserver.conf
+Prg=`basename $0`
+
+Usage()
+{
+    echo "Usage: $Prg start|stop|install|remove|status" >&2
+    exit 1
+}
+
+ChkAdmin()
+{
+    id | grep Admin >/dev/null && return
+    echo "$Prg: must be run as Administrator" >&2
+    exit 2
+}
+
+ChkInstall()
+{
+    cygrunsrv -L | grep "$CygSrv" >/dev/null && return
+    echo "$Prg: not installed" >&2
+    exit 4
+}
+
+for pkg in httpd mysqld httpd-mod_php5
+do
+    cygcheck -c $pkg | grep "^$pkg " >/dev/null || { echo "$Prg: $pkg package is not installed" >&2; exit 3; }
+done
+
+test "$1" || Usage
+case $1 in
+    install)
+	if cygrunsrv -L | grep "$CygSrv" >/dev/null; then
+	    echo "$Prg: already installed" >&2
+	    exit 5
+	fi
+	ChkAdmin
+	test -f $SrvCnf || { echo "Setting up cygserver."; cygserver-config; }
+	echo "Installing cygserver as a Windows service."
+	cygrunsrv -I "$CygSrv" -p /usr/sbin/cygserver.exe -t manual -O -f "Cygwin's IPC and security services"
+	echo "Run \"mysql_install_db\" to install mysql default databases"
+	echo "Run \"$Prg start\" to start $Prg services"
+	;;
+    remove)
+	ChkInstall
+	ChkAdmin
+	echo "Removing cygserver Windows service."
+	cygrunsrv -R "$CygSrv"
+	rm -f $SrvCnf
+	;;
+    start)
+	ChkInstall
+	ChkAdmin
+	if cygrunsrv -Q "$CygSrv" | grep 'Running' >/dev/null; then
+	    echo "$CygSrv is already running"
+	else
+	    echo "Starting Cygwin Service"
+	    cygrunsrv -S "$CygSrv"
+	fi
+	if ps -f | grep '[s]bin/httpd' >/dev/null; then
+	    echo "Cygwin Apache is already running"
+	else
+	    echo "Starting Cygwin Apache"
+	    /usr/sbin/apachectl start
+	fi
+	if ps -f | grep '[s]bin/mysqld' >/dev/null; then
+	    echo "Cygwin mysqld is already running"
+	else
+	    echo "Starting Cygwin mysqld"
+	    mysqld_safe >/var/log/mysqld_safe.log 2>&1 &
+	fi
+	;;
+    stop)
+	ChkInstall
+	ChkAdmin
+	if ps -f | grep '[s]bin/mysqld' >/dev/null; then
+	    echo "Stopping Cygwin mysqld"
+	    mysqladmin -u$DbUser -p$DbPass shutdown
+	else
+	    echo "Cygwin mysqld is not running"
+	fi
+	if ps -f | grep '[s]bin/httpd' >/dev/null; then
+	    echo "Stopping Cygwin Apache"
+	    /usr/sbin/apachectl stop
+	else
+	    echo "Cygwin Apache is not running"
+	fi
+	if cygrunsrv -Q "$CygSrv" | grep 'Running' >/dev/null; then
+	    echo "Stopping Cygwin Service"
+	    cygrunsrv -E "$CygSrv"
+	else
+	    echo "$CygSrv is not running"
+	fi
+	;;
+    status)
+	test -f $SrvCnf && what="" || what=" not"
+	echo "Cygserver is$what configured"
+	cygrunsrv -Q "$CygSrv" | grep 'Running' >/dev/null && what="" || what=" not"
+	echo "Cygwin Service is$what running"
+	ps -f | grep '[s]bin/httpd' >/dev/null && what="" || what=" not"
+	echo "Cygwin Apache is$what running"
+	ps -f | grep '[s]bin/mysqld' >/dev/null && what="" || what=" not"
+	echo "Cygwin mysqld is$what running"
+	;;
+    *)
+	Usage
+	;;
+esac
+exit 0
