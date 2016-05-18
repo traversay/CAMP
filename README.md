@@ -34,3 +34,12 @@ The basic commands are:
     camp remove		# to remove the cygserver Windows service (need to 'stop' first)
     camp start		# to start CAMP
     camp stop		# to stop CAMP
+
+    camp status		# to show current state (no privileges needed)
+
+Known bugs
+----------
+
+Mysqld is started with the mysqld_safe script, which has no option to start mysqld as a daemon
+(this is possible in Cygwin with the setsid utility, but it would require modifying mysqld_safe),
+so the controlling tty remains busy until you stop the mysqld server.

@@ -2,46 +2,64 @@
 
 DbUser='root'
 DbPass='root'
-CygSrv="Cygwin Service"
+CygSrv="CygServer"
 SrvCnf=/etc/cygserver.conf
 Prg=`basename $0`
 
+ErrExit()
+{
+    echo "$1" >&2
+    exit $2
+}
+
 Usage()
 {
-    echo "Usage: $Prg start|stop|install|remove|status" >&2
-    exit 1
+    ErrExit "Usage: $Prg start|stop|install|remove|status" 1
 }
 
 ChkAdmin()
 {
     id | grep Admin >/dev/null && return
-    echo "$Prg: must be run as Administrator" >&2
-    exit 2
+    ErrExit "$Prg: must be run as Administrator" 2
 }
 
 ChkInstall()
 {
     cygrunsrv -L | grep "$CygSrv" >/dev/null && return
-    echo "$Prg: not installed" >&2
-    exit 4
+    ErrExit "$Prg: not installed" 4
+}
+
+ChkCygrun()
+{
+    cygrunsrv -Q "$CygSrv" | grep 'Running' >/dev/null
+}
+
+ChkProc()
+{
+    ps -ef | grep "[s]bin/$1" >/dev/null
+}
+
+MysqlCtl()
+{
+    case "$1" in
+	start)	mysqld_safe >/var/log/mysqld_safe.log 2>&1 & ;;
+	stop)	mysqladmin -u$DbUser -p$DbPass shutdown ;;
+    esac
 }
 
 for pkg in httpd mysqld httpd-mod_php5
 do
-    cygcheck -c $pkg | grep "^$pkg " >/dev/null || { echo "$Prg: $pkg package is not installed" >&2; exit 3; }
+    cygcheck -c $pkg | grep "^$pkg " >/dev/null || ErrExit "$Prg: $pkg package is not installed" 3
 done
 
 test "$1" || Usage
 case $1 in
     install)
-	if cygrunsrv -L | grep "$CygSrv" >/dev/null; then
-	    echo "$Prg: already installed" >&2
-	    exit 5
-	fi
+	cygrunsrv -L | grep "$CygSrv" >/dev/null && ErrExit "$Prg: already installed" 5
 	ChkAdmin
-	test -f $SrvCnf || { echo "Setting up cygserver."; cygserver-config; }
+	test -f $SrvCnf || { echo "Setting up cygserver."; cygserver-config -n; }
 	echo "Installing cygserver as a Windows service."
-	cygrunsrv -I "$CygSrv" -p /usr/sbin/cygserver.exe -t manual -O -f "Cygwin's IPC and security services"
+	cygrunsrv -I "$CygSrv" -p /usr/sbin/cygserver.exe -t manual -O -d "Cygwin IPC and security"
 	echo "Run \"mysql_install_db\" to install mysql default databases"
 	echo "Run \"$Prg start\" to start $Prg services"
 	;;
@@ -53,58 +71,33 @@ case $1 in
 	rm -f $SrvCnf
 	;;
     start)
+	Runs="is already running"
+	Msg="Starting Cygwin"
 	ChkInstall
 	ChkAdmin
-	if cygrunsrv -Q "$CygSrv" | grep 'Running' >/dev/null; then
-	    echo "$CygSrv is already running"
-	else
-	    echo "Starting Cygwin Service"
-	    cygrunsrv -S "$CygSrv"
-	fi
-	if ps -f | grep '[s]bin/httpd' >/dev/null; then
-	    echo "Cygwin Apache is already running"
-	else
-	    echo "Starting Cygwin Apache"
-	    /usr/sbin/apachectl start
-	fi
-	if ps -f | grep '[s]bin/mysqld' >/dev/null; then
-	    echo "Cygwin mysqld is already running"
-	else
-	    echo "Starting Cygwin mysqld"
-	    mysqld_safe >/var/log/mysqld_safe.log 2>&1 &
-	fi
+	ChkCygrun && echo "Cygwin Service $Runs" || { echo "$Msg Service"; cygrunsrv -S "$CygSrv"; }
+	ChkProc httpd && echo "Cygwin Apache $Runs" || { echo "$Msg Apache"; /usr/sbin/apachectl start; }
+	ChkProc mysqld && echo "Cygwin mysqld $Runs" || { echo "$Msg mysqld"; MysqlCtl start; }
 	;;
     stop)
+	Stop="is not running"
+	Msg="Stopping Cygwin"
 	ChkInstall
 	ChkAdmin
-	if ps -f | grep '[s]bin/mysqld' >/dev/null; then
-	    echo "Stopping Cygwin mysqld"
-	    mysqladmin -u$DbUser -p$DbPass shutdown
-	else
-	    echo "Cygwin mysqld is not running"
-	fi
-	if ps -f | grep '[s]bin/httpd' >/dev/null; then
-	    echo "Stopping Cygwin Apache"
-	    /usr/sbin/apachectl stop
-	else
-	    echo "Cygwin Apache is not running"
-	fi
-	if cygrunsrv -Q "$CygSrv" | grep 'Running' >/dev/null; then
-	    echo "Stopping Cygwin Service"
-	    cygrunsrv -E "$CygSrv"
-	else
-	    echo "$CygSrv is not running"
-	fi
+	ChkProc mysqld && { echo "$Msg mysqld"; MysqlCtl stop; } || echo "Cygwin mysqld $Stop"
+	ChkProc httpd && { echo "$Msg Apache"; /usr/sbin/apachectl stop; } || echo "Cygwin Apache $Stop"
+	ChkCygrun && { echo "$Msg Service"; cygrunsrv -E "$CygSrv"; } || echo "Cygwin Service $Stop"
 	;;
     status)
-	test -f $SrvCnf && what="" || what=" not"
-	echo "Cygserver is$what configured"
-	cygrunsrv -Q "$CygSrv" | grep 'Running' >/dev/null && what="" || what=" not"
-	echo "Cygwin Service is$what running"
-	ps -f | grep '[s]bin/httpd' >/dev/null && what="" || what=" not"
-	echo "Cygwin Apache is$what running"
-	ps -f | grep '[s]bin/mysqld' >/dev/null && what="" || what=" not"
-	echo "Cygwin mysqld is$what running"
+	test -f $SrvCnf && cond="" || cond=" not"
+	echo "Cygserver is$cond configured"
+	test "$cond" && exit 1
+	ChkCygrun && cond="" || cond=" not"
+	echo "Cygwin Service is$cond running"
+	ChkProc httpd && cond="" || cond=" not"
+	echo "Cygwin Apache is$cond running"
+	ChkProc mysqld && cond="" || cond=" not"
+	echo "Cygwin mysqld is$cond running"
 	;;
     *)
 	Usage
