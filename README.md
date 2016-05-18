@@ -9,13 +9,20 @@ Quick start
 
 camp is a simple shell script.
 
+It checks that at a minimum, Cygwin packages 'httpd', 'mysqld' and 'httpd-mod_php5'
+are installed, so you will have to install them first with the Cygwin Setup program.
+
 To install, run from a Cygwin Terminal:
 
-    lynx -source rawgit.com/traversay/CAMP/master/camp >/usr/local/bin/camp
+    lynx -source https://github.com/traversay/CAMP/raw/master/camp >/usr/local/bin/camp
 
 or
 
-    wget rawgit.com/traversay/CAMP/master/camp -O /usr/local/bin/camp
+    wget https://github.com/traversay/CAMP/raw/master/camp -O /usr/local/bin/camp
+
+then
+
+    chmod +x /usr/local/bin/camp
 
 To use, you may need to start camp with Administrator privileges if in Windows Vista and later.
 
