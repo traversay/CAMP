@@ -1,5 +1,7 @@
 #!/bin/sh
-
+#
+#	camp - Cygwin / Apache / MySQL / PHP startup script
+#
 DbUser='root'
 DbPass='root'
 CygSrv="CygServer"
