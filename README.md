@@ -24,7 +24,8 @@ then
 
     chmod +x /usr/local/bin/camp
 
-To use, you may need to start camp with Administrator privileges if in Windows Vista and later.
+To use, you will need to start camp with Administrator privileges, unless you are running under
+Windows XP or earlier.
 
 You can do this by righ-clicking on the Cygwin Terminal icon and choosing "Run as Administrator".
 
